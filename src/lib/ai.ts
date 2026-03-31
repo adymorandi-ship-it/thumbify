@@ -1,45 +1,45 @@
 import sharp from 'sharp'
 
 const styleConfigs: Record<string, {
-  prefix: string
-  suffix: string
-  negative: string
+  mainPrompt: string
+  negativePrompt: string
+  model: string
   enhance: string
 }> = {
   bold: {
-    prefix: 'epic youtube thumbnail, bold vibrant colors, dramatic cinematic lighting, high contrast, professional photography, 8k ultra detailed',
-    suffix: 'centered composition, shallow depth of field, studio quality, magazine cover quality',
-    negative: 'blurry, low quality, text, watermark, logo, distorted, ugly, deformed',
+    mainPrompt: 'professional youtube thumbnail photo, {subject}, bold vibrant saturated colors, dramatic cinematic studio lighting, high contrast, 8k ultra detailed, centered composition, shallow depth of field, magazine cover quality',
+    negativePrompt: 'cartoon, anime, illustration, painting, blurry, low quality, text, watermark, logo',
+    model: 'flux-realism',
     enhance: 'vibrant'
   },
   minimal: {
-    prefix: 'clean minimal youtube thumbnail, modern design, soft lighting, elegant, premium feel, white and pastel tones',
-    suffix: 'balanced composition, negative space, sophisticated, editorial style',
-    negative: 'cluttered, busy, messy, low quality, blurry, text, watermark',
+    mainPrompt: 'clean minimal modern youtube thumbnail photo, {subject}, soft diffused natural lighting, elegant premium feel, pastel tones, balanced composition, negative space, sophisticated editorial style, 8k',
+    negativePrompt: 'cartoon, anime, illustration, cluttered, busy, messy, dark, text, watermark',
+    model: 'flux-realism',
     enhance: 'minimal'
   },
   gaming: {
-    prefix: 'epic gaming youtube thumbnail, neon glow, electric blue and purple, cyberpunk vibes, intense action, HD gaming screenshot style',
-    suffix: 'dynamic angle, motion blur, particle effects, dramatic shadows',
-    negative: 'boring, plain, low energy, blurry, text, watermark',
+    mainPrompt: 'epic gaming youtube thumbnail, {subject}, neon glow effects, electric blue purple red colors, cyberpunk aesthetic, intense action, dynamic low angle, motion blur, particle effects, dramatic shadows, 8k',
+    negativePrompt: 'realistic photo, boring, plain, text, watermark, blurry',
+    model: 'flux-3d',
     enhance: 'gaming'
   },
   vlog: {
-    prefix: 'lifestyle vlog youtube thumbnail, warm golden hour lighting, natural colors, authentic feel, personal and inviting',
-    suffix: 'bokeh background, warm tones, candid moment, relatable',
-    negative: 'artificial, cold, dark, blurry, text, watermark, corporate',
+    mainPrompt: 'lifestyle vlog youtube thumbnail photo, {subject}, warm golden hour lighting, natural colors, authentic candid feel, personal inviting, beautiful bokeh background, warm tones, relatable, 8k',
+    negativePrompt: 'cartoon, anime, artificial, cold, dark, text, watermark, corporate, staged',
+    model: 'flux-realism',
     enhance: 'warm'
   },
   tech: {
-    prefix: 'tech review youtube thumbnail, futuristic sleek design, product showcase, clean studio lighting, premium gadgets',
-    suffix: 'sharp details, metallic surfaces, reflection, tech aesthetic',
-    negative: 'outdated, messy, blurry, low quality, text, watermark',
+    mainPrompt: 'tech review youtube thumbnail photo, {subject}, futuristic sleek design, product showcase, clean bright studio lighting, premium gadgets, sharp details, metallic surfaces, reflections, tech aesthetic, 8k',
+    negativePrompt: 'cartoon, anime, outdated, messy, blurry, text, watermark, vintage',
+    model: 'flux-realism',
     enhance: 'tech'
   },
   educational: {
-    prefix: 'educational youtube thumbnail, clear and informative, bright colors, attention grabbing, knowledge sharing style',
-    suffix: 'organized layout, clear focal point, professional, trustworthy',
-    negative: 'confusing, dark, blurry, low quality, text, watermark',
+    mainPrompt: 'educational youtube thumbnail photo, {subject}, clear informative design, bright eye-catching saturated colors, attention grabbing, professional trustworthy, organized, 8k detailed',
+    negativePrompt: 'cartoon, anime, confusing, dark, blurry, text, watermark, chaotic',
+    model: 'flux-realism',
     enhance: 'bright'
   }
 }
@@ -47,20 +47,38 @@ const styleConfigs: Record<string, {
 export async function generateThumbnail(prompt: string, style: string): Promise<string> {
   const config = styleConfigs[style] || styleConfigs.bold
   
-  const fullPrompt = `${config.prefix}, ${prompt}, ${config.suffix}`
+  // Insert user prompt into template
+  const fullPrompt = config.mainPrompt.replace('{subject}', prompt)
   
-  const encodedPrompt = encodeURIComponent(fullPrompt)
-  const seed = Math.floor(Math.random() * 100000)
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1280&height=720&nologo=true&seed=${seed}&negative=${encodeURIComponent(config.negative)}`
+  // Generate unique seed
+  const seed = Math.floor(Math.random() * 1000000)
+  
+  // Build URL with all parameters
+  const params = new URLSearchParams({
+    width: '1280',
+    height: '720',
+    nologo: 'true',
+    seed: seed.toString(),
+    model: config.model,
+    negative_prompt: config.negativePrompt,
+  })
+  
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?${params.toString()}`
+
+  console.log(`Generating with model: ${config.model}`)
+  console.log(`Prompt: ${fullPrompt}`)
 
   // Fetch image with retries
-  const maxRetries = 15
+  const maxRetries = 20
   let imageBuffer: Buffer | null = null
 
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const res = await fetch(imageUrl + '&t=' + Date.now(), {
-        signal: AbortSignal.timeout(25000),
+      const res = await fetch(url + '&t=' + Date.now(), {
+        signal: AbortSignal.timeout(30000),
+        headers: {
+          'User-Agent': 'Thumbify/1.0',
+        }
       })
       
       if (res.ok) {
@@ -68,21 +86,28 @@ export async function generateThumbnail(prompt: string, style: string): Promise<
         if (contentType.includes('image')) {
           const arrayBuffer = await res.arrayBuffer()
           imageBuffer = Buffer.from(arrayBuffer)
+          console.log(`Image generated on attempt ${i + 1}, size: ${imageBuffer.length} bytes`)
           break
         }
       }
-    } catch {
-      // not ready yet
+      
+      // Check for error response
+      if (res.status >= 400) {
+        console.log(`Attempt ${i + 1}: Status ${res.status}`)
+      }
+    } catch (e: any) {
+      console.log(`Attempt ${i + 1}: ${e.message}`)
     }
     
-    await new Promise(resolve => setTimeout(resolve, 2500))
+    // Wait before retry (increasing delay)
+    await new Promise(resolve => setTimeout(resolve, 2000 + (i * 500)))
   }
 
   if (!imageBuffer) {
-    throw new Error('Failed to generate image')
+    throw new Error('Failed to generate image after all retries')
   }
 
-  // Enhance image with Sharp
+  // Enhance image with Sharp based on style
   const enhanced = await enhanceImage(imageBuffer, config.enhance)
   
   // Convert to base64
@@ -97,24 +122,24 @@ async function enhanceImage(buffer: Buffer, mode: string): Promise<Buffer> {
   switch (mode) {
     case 'vibrant':
       pipeline = pipeline
-        .modulate({ brightness: 1.1, saturation: 1.4 })
+        .modulate({ brightness: 1.08, saturation: 1.35 })
         .sharpen({ sigma: 1.2 })
+        .normalize()
       break
     case 'minimal':
       pipeline = pipeline
-        .modulate({ brightness: 1.05, saturation: 0.9 })
-        .blur(0.3)
+        .modulate({ brightness: 1.05, saturation: 0.85 })
         .sharpen({ sigma: 0.8 })
       break
     case 'gaming':
       pipeline = pipeline
         .modulate({ brightness: 1.05, saturation: 1.5 })
         .sharpen({ sigma: 1.5 })
-        .gamma(1.1)
+        .gamma(1.15)
       break
     case 'warm':
       pipeline = pipeline
-        .modulate({ brightness: 1.08, saturation: 1.2, hue: 10 })
+        .modulate({ brightness: 1.08, saturation: 1.2, hue: 8 })
         .sharpen({ sigma: 0.9 })
       break
     case 'tech':
@@ -125,23 +150,22 @@ async function enhanceImage(buffer: Buffer, mode: string): Promise<Buffer> {
       break
     case 'bright':
       pipeline = pipeline
-        .modulate({ brightness: 1.15, saturation: 1.3 })
+        .modulate({ brightness: 1.15, saturation: 1.25 })
         .sharpen({ sigma: 1.0 })
+        .normalize()
       break
   }
 
-  return pipeline
-    .jpeg({ quality: 95 })
-    .toBuffer()
+  return pipeline.jpeg({ quality: 92 }).toBuffer()
 }
 
 export function getStyles() {
   return [
-    { id: 'bold', name: 'Bold & Vibrant', description: 'Eye-catching colors and dramatic lighting' },
-    { id: 'minimal', name: 'Clean & Minimal', description: 'Modern and sleek professional look' },
-    { id: 'gaming', name: 'Gaming Epic', description: 'Neon colors and action-packed style' },
-    { id: 'vlog', name: 'Lifestyle Vlog', description: 'Warm and friendly personal style' },
-    { id: 'tech', name: 'Tech Review', description: 'Futuristic and sleek tech style' },
-    { id: 'educational', name: 'Educational', description: 'Clear and informative design' },
+    { id: 'bold', name: 'Bold & Vibrant', description: 'Culori intense, dramatic', emoji: '🔥' },
+    { id: 'minimal', name: 'Clean & Minimal', description: 'Modern, elegant, simplu', emoji: '✨' },
+    { id: 'gaming', name: 'Gaming Epic', description: 'Neon, acțiune, cyberpunk', emoji: '🎮' },
+    { id: 'vlog', name: 'Lifestyle Vlog', description: 'Cald, prietenos, natural', emoji: '🌞' },
+    { id: 'tech', name: 'Tech Review', description: 'Futurist, sleek, gadgeturi', emoji: '💻' },
+    { id: 'educational', name: 'Educational', description: 'Clar, informativ, profesionist', emoji: '📚' },
   ]
 }

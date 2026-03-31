@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { generateThumbnail } from '@/lib/ai'
 
-export const maxDuration = 60
+export const maxDuration = 120
 
 export async function POST(request: Request) {
   try {
@@ -25,7 +25,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ 
       imageUrl,
-      message: 'Thumbnail generat cu succes!'
+      message: 'Thumbnail generat cu succes!',
+      model: 'flux-realism'
     })
   } catch (error) {
     console.error('Generate error:', error)
