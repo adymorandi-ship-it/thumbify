@@ -89,7 +89,7 @@ async function enhanceImage(buffer: Buffer, style: string): Promise<Buffer> {
     case 'bold':
       pipeline = pipeline
         .modulate({ brightness: 1.05, saturation: 1.3 })
-        .sharpen({ sigma: 1.5, flat: 1, jagged: 2 })
+        .sharpen(1.5, 1, 2)
         .normalize()
       break
     case 'minimal':
